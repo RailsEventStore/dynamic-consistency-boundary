@@ -6,6 +6,9 @@ gemfile true do
   gem "ostruct"
 end
 
+require_relative "dcb_event_store"
+require_relative "test"
+
 # based on https://dcb.events/examples/course-subscriptions/
 
 # event type definitions:
@@ -24,6 +27,11 @@ class StudentSubscribedToCourse < RubyEventStore::Event
       ["student:#{event.data[:student_id]}", "course:#{event.data[:course_id]}"]
     end
 end
+
+# commands
+DefineCourse = Data.define(:course_id, :capacity)
+ChangeCourseCapacity = Data.define(:course_id, :new_capacity)
+SubscribeStudentToCourse = Data.define(:course_id, :student_id)
 
 # projections for decision models:
 
@@ -83,6 +91,13 @@ class Api
     @event_store = event_store
   end
 
+  def call(command)
+    method_name =
+      command.class.to_s.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase.to_sym
+    execution = method(method_name)
+    execution.call(**command.to_h)
+  end
+
   def buildDecisionModel(**projections)
     model =
       projections.reduce(OpenStruct.new) do |state, (key, projection)|
@@ -113,7 +128,7 @@ class Api
     )
   end
 
-  def changeCourseCapacity(course_id:, new_capacity:)
+  def change_course_capacity(course_id:, new_capacity:)
     state, query, append_condition =
       buildDecisionModel(
         course_exists: course_exists_projection(course_id),
@@ -138,7 +153,7 @@ class Api
     )
   end
 
-  def subscribeStudentToCourse(course_id:, student_id:)
+  def subscribe_student_to_course(course_id:, student_id:)
     state, query, append_condition =
       buildDecisionModel(
         course_exists: course_exists_projection(course_id),
@@ -175,133 +190,83 @@ class Api
   end
 end
 
-class DcbEventStore
-  def initialize
-    @store = RubyEventStore::Client.new
-  end
-
-  def execute(projection)
-    projection.run(@store)
-  end
-
-  def append(event_or_events, query = nil, append_condition = nil)
-    events = Array(event_or_events)
-    if (append_condition && query&.last&.event_id != append_condition)
-      raise RubyEventStore::WrongExpectedEventVersion
-    end
-    @store.append(events)
-    events.each do |event|
-      Array(event.class.tags.call(event)).each do |tag|
-        @store.link(event.event_id, stream_name: tag)
-      end
-    end
-  end
-
-  def read
-    @store.read
-  end
-end
-
-# test utilities
-
-class Test
-  def self.run(
-    description,
-    given: nil,
-    expected_error: nil,
-    expected_event: nil,
-    &block
-  )
-    puts description
-    store = DcbEventStore.new
-    store.append(given) if given
-    block.call(Api.new(store))
-    last_event = store.read.last
-    puts(
-      if expected_event && last_event.class == expected_event.class &&
-           last_event.data === expected_event.data
-        "OK"
-      else
-        "FAIL"
-      end
-    )
-  rescue Api::Error => e
-    if !expected_event && e.message == expected_error
-      puts "OK. Expected error: #{expected_error}"
-    else
-      puts "FAIL. Error: #{e.message}"
-    end
-  rescue => e
-    puts "FAIL. Unexpected error: #{e.message}"
-  end
-end
-
 # test cases:
 
-Test.run(
-  "Define course with existing id",
-  given: [CourseDefined.new(data: { course_id: "c1", capacity: 10 })],
-  expected_error: "Course with id c1 already exists"
-) { |api| api.define_course(course_id: "c1", capacity: 15) }
+Test
+  .new("Define course with existing id")
+  .given(CourseDefined.new(data: { course_id: "c1", capacity: 10 }))
+  .when(DefineCourse.new(course_id: "c1", capacity: 15))
+  .expect_error("Course with id c1 already exists")
+  .run
 
-Test.run(
-  "Define course with new id",
-  expected_event: CourseDefined.new(data: { course_id: "c1", capacity: 15 })
-) { |api| api.define_course(course_id: "c1", capacity: 15) }
+Test
+  .new("Define course with new id")
+  .when(DefineCourse.new(course_id: "c1", capacity: 15))
+  .expect_event(CourseDefined.new(data: { course_id: "c1", capacity: 15 }))
+  .run
 
-Test.run(
-  "Change capacity of a non-existing course",
-  expected_error: "Course c0 does not exist"
-) { |api| api.changeCourseCapacity(course_id: "c0", new_capacity: 15) }
+Test
+  .new("Change capacity of a non-existing course")
+  .when(ChangeCourseCapacity.new(course_id: "c0", new_capacity: 15))
+  .expect_error("Course c0 does not exist")
+  .run
 
-Test.run(
-  "Change capacity of a course to a new value",
-  given: [CourseDefined.new(data: { course_id: "c1", capacity: 12 })],
-  expected_event:
+Test
+  .new("Change capacity of a course to a new value")
+  .given(CourseDefined.new(data: { course_id: "c1", capacity: 12 }))
+  .when(ChangeCourseCapacity.new(course_id: "c1", new_capacity: 15))
+  .expect_event(
     CourseCapacityChanged.new(data: { course_id: "c1", new_capacity: 15 })
-) { |api| api.changeCourseCapacity(course_id: "c1", new_capacity: 15) }
+  )
+  .run
 
-Test.run(
-  "Subscribe student to non-existing course",
-  expected_error: "Course c0 does not exist"
-) { |api| api.subscribeStudentToCourse(student_id: "s1", course_id: "c0") }
+Test
+  .new("Subscribe student to non-existing course")
+  .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c0"))
+  .expect_error("Course c0 does not exist")
+  .run
 
-Test.run(
-  "Subscribe student to fully booked course",
-  given: [
+Test
+  .new("Subscribe student to fully booked course")
+  .given(
     CourseDefined.new(data: { course_id: "c1", capacity: 3 }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c1" }),
     StudentSubscribedToCourse.new(data: { student_id: "s2", course_id: "c1" }),
     StudentSubscribedToCourse.new(data: { student_id: "s3", course_id: "c1" })
-  ],
-  expected_error: "Course c1 is already fully booked"
-) { |api| api.subscribeStudentToCourse(student_id: "s4", course_id: "c1") }
+  )
+  .when(SubscribeStudentToCourse.new(student_id: "s4", course_id: "c1"))
+  .expect_error("Course c1 is already fully booked")
+  .run
 
-Test.run(
-  "Subscribe student to the same course twice",
-  given: [
+Test
+  .new("Subscribe student to the same course twice")
+  .given(
     CourseDefined.new(data: { course_id: "c1", capacity: 10 }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c1" })
-  ],
-  expected_error: "Student already subscribed to this course"
-) { |api| api.subscribeStudentToCourse(student_id: "s1", course_id: "c1") }
+  )
+  .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c1"))
+  .expect_error("Student already subscribed to this course")
+  .run
 
-Test.run(
-  "Subscribe student to more than 5 courses",
-  given: [
+Test
+  .new("Subscribe student to more than 5 courses")
+  .given(
     CourseDefined.new(data: { course_id: "c6", capacity: 10 }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c1" }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c2" }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c3" }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c4" }),
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c5" })
-  ],
-  expected_error: "Student already subscribed to 5 courses"
-) { |api| api.subscribeStudentToCourse(student_id: "s1", course_id: "c6") }
+  )
+  .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c6"))
+  .expect_error("Student already subscribed to 5 courses")
+  .run
 
-Test.run(
-  "Subscribe student to course with capacity",
-  given: [CourseDefined.new(data: { course_id: "c1", capacity: 10 })],
-  expected_event:
+Test
+  .new("Subscribe student to course with capacity")
+  .given(CourseDefined.new(data: { course_id: "c1", capacity: 10 }))
+  .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c1"))
+  .expect_event(
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c1" })
-) { |api| api.subscribeStudentToCourse(student_id: "s1", course_id: "c1") }
+  )
+  .run
