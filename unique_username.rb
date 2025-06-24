@@ -38,10 +38,25 @@ end
 
 # commands
 RegisterAccount = Data.define(:username)
+RegisterAccountWithRetentionPeriod = Data.define(:username)
 
 # projections for decision models:
 
 def is_username_claimed_projection(username)
+  RubyEventStore::Projection
+    .from_stream("username:#{username}")
+    .init(-> { { result: false } })
+    .when(AccountRegistered, ->(state, _) { state[:result] = true })
+    .when(AccountClosed, ->(state, event) { state[:result] = false })
+    .when(
+      UsernameChanged,
+      ->(state, event) do
+        state[:result] = event.data[:new_username] == username
+      end
+    )
+end
+
+def is_username_claimed_with_retention_period_projection(username)
   RubyEventStore::Projection
     .from_stream("username:#{username}")
     .init(-> { { result: false } })
@@ -54,7 +69,7 @@ def is_username_claimed_projection(username)
       UsernameChanged,
       ->(state, event) do
         state[:result] = event.data[:new_username] == username ||
-          event.timestamp <= days_ago(3)
+          event.timestamp >= days_ago(3)
       end
     )
 end
@@ -94,6 +109,24 @@ class Api
     state, query, append_condition =
       buildDecisionModel(
         is_username_claimed: is_username_claimed_projection(username)
+      )
+
+    if (state.is_username_claimed)
+      raise Error, "Username #{username} is claimed"
+    end
+
+    @event_store.append(
+      AccountRegistered.new(data: { username: username }),
+      query,
+      append_condition
+    )
+  end
+
+  def register_account_with_retention_period(username:)
+    state, query, append_condition =
+      buildDecisionModel(
+        is_username_claimed:
+          is_username_claimed_with_retention_period_projection(username)
       )
 
     if (state.is_username_claimed)
@@ -183,7 +216,7 @@ Test
       }
     )
   )
-  .when(RegisterAccount.new(username: "u1"))
+  .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_error("Username u1 is claimed")
   .run
 
@@ -208,7 +241,7 @@ Test
       }
     )
   )
-  .when(RegisterAccount.new(username: "u1changed"))
+  .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_error("Username u1 is claimed")
   .run
 
@@ -232,7 +265,7 @@ Test
       }
     )
   )
-  .when(RegisterAccount.new(username: "u1"))
+  .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
   .run
 
@@ -257,6 +290,6 @@ Test
       }
     )
   )
-  .when(RegisterAccount.new(username: "u1changed"))
+  .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
   .run
