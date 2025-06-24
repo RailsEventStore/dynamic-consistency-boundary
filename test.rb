@@ -25,11 +25,10 @@ class Test
 
   attr_reader :description, :events, :command, :expected_event, :expected_error
 
-  def run
-    store = DcbEventStore.new
-    store.append(events) unless events&.empty?
-    Api.new(store).call(command)
-    check_expected_event(store.read.last)
+  def run(api)
+    api.store.append(events) unless events&.empty?
+    api.call(command)
+    check_expected_event(api.store.read.last)
   rescue Api::Error => e
     check_expected_error(e)
   rescue => e

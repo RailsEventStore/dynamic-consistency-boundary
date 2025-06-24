@@ -7,6 +7,7 @@ gemfile true do
 end
 
 require_relative "dcb_event_store"
+require_relative "api"
 require_relative "test"
 
 def minutes_ago(minutes)
@@ -56,34 +57,8 @@ end
 
 # command handlers:
 
-class Api
-  Error = Class.new(StandardError)
-
-  def initialize(event_store)
-    @event_store = event_store
-  end
-
-  def call(command)
-    method_name =
-      command.class.to_s.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase.to_sym
-    execution = method(method_name)
-    execution.call(**command.to_h)
-  end
-
-  def buildDecisionModel(**projections)
-    model =
-      projections.reduce(OpenStruct.new) do |state, (key, projection)|
-        state[key] = @event_store.execute(projection).fetch(:result)
-        state
-      end
-    query =
-      @event_store
-        .read
-        .stream(projections.values.map(&:streams).uniq)
-        .of_type(projections.values.map(&:handled_events).uniq)
-    append_condition = query.last&.event_id
-    [model, query, append_condition]
-  end
+class OptInToken
+  include Api
 
   def confirm_sign_up(email_address:, otp:)
     state, query, append_condition =
@@ -96,7 +71,7 @@ class Api
     raise Error, "OTP was already used" if state.pending_sign_up.otp_used
     raise Error, "OTP expired" if state.pending_sign_up.otp_expired
 
-    @event_store.append(
+    store.append(
       SignUpConfirmed.new(
         data: {
           email_address: email_address,
@@ -118,7 +93,7 @@ Test
   .new("Confirm SignUp for non-existing OTP")
   .when(ConfirmSignUp.new(email_address: "john.doe@example.com", otp: "000000"))
   .expect_error("No pending sign-up for this OTP / email address")
-  .run
+  .run(OptInToken.new)
 
 Test
   .new("Confirm SignUp for OTP assigned to different email address")
@@ -133,7 +108,7 @@ Test
   )
   .when(ConfirmSignUp.new(email_address: "jane.doe@example.com", otp: "111111"))
   .expect_error("No pending sign-up for this OTP / email address")
-  .run
+  .run(OptInToken.new)
 
 Test
   .new("Confirm SignUp for already used OTP")
@@ -155,7 +130,7 @@ Test
   )
   .when(ConfirmSignUp.new(email_address: "john.doe@example.com", otp: "222222"))
   .expect_error("OTP was already used")
-  .run
+  .run(OptInToken.new)
 
 Test
   .new("Confirm SignUp for valid OTP")
@@ -178,7 +153,7 @@ Test
       }
     )
   )
-  .run
+  .run(OptInToken.new)
 
 # Feature 2: Expiring OTP
 
@@ -198,4 +173,4 @@ Test
   )
   .when(ConfirmSignUp.new(email_address: "john.doe@example.com", otp: "333333"))
   .expect_error("OTP expired")
-  .run
+  .run(OptInToken.new)

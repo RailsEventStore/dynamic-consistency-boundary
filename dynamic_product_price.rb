@@ -7,6 +7,7 @@ gemfile true do
 end
 
 require_relative "dcb_event_store"
+require_relative "api"
 require_relative "test"
 
 def minutes_ago(minutes)
@@ -80,34 +81,8 @@ end
 
 # command handlers:
 
-class Api
-  Error = Class.new(StandardError)
-
-  def initialize(event_store)
-    @event_store = event_store
-  end
-
-  def call(command)
-    method_name =
-      command.class.to_s.gsub(/([a-z\d])([A-Z])/, '\1_\2').downcase.to_sym
-    execution = method(method_name)
-    execution.call(**command.to_h)
-  end
-
-  def buildDecisionModel(**projections)
-    model =
-      projections.reduce(OpenStruct.new) do |state, (key, projection)|
-        state[key] = @event_store.execute(projection).fetch(:result)
-        state
-      end
-    query =
-      @event_store
-        .read
-        .stream(projections.values.map(&:streams).uniq)
-        .of_type(projections.values.map(&:handled_events).uniq)
-    append_condition = query.last&.event_id
-    [model, query, append_condition]
-  end
+class DynamicProductPrice
+  include Api
 
   def order_product(product_id:, displayed_price:)
     state, query, append_condition =
@@ -120,7 +95,7 @@ class Api
       raise Error, "invalid price for product #{product_id}"
     end
 
-    @event_store.append(
+    store.append(
       ProductOrdered.new(
         data: {
           product_id: product_id,
@@ -153,7 +128,7 @@ class Api
       end
     end
 
-    @event_store.append(
+    store.append(
       MultipleProductsOrdered.new(
         data: {
           items:
@@ -177,14 +152,14 @@ Test
   .given(ProductDefined.new(data: { product_id: "p1", price: 123 }))
   .when(OrderProduct.new(product_id: "p1", displayed_price: 100))
   .expect_error("invalid price for product p1")
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Order product with valid displayed price")
   .given(ProductDefined.new(data: { product_id: "p1", price: 123 }))
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 123 }))
-  .run
+  .run(DynamicProductPrice.new)
 
 # Feature 2: Changing product prices
 
@@ -203,7 +178,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 100))
   .expect_error("invalid price for product p1")
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Order product with a price that was changed more than 10 minutes ago")
@@ -229,7 +204,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_error("invalid price for product p1")
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Order product with initial valid price")
@@ -246,7 +221,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 123 }))
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Order product with a price that was changed less than 10 minutes ago")
@@ -272,7 +247,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 123 }))
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Order product with valid new price")
@@ -298,7 +273,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 134))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 134 }))
-  .run
+  .run(DynamicProductPrice.new)
 
 # Feature 3: Multiple products (shopping cart)
 
@@ -321,7 +296,7 @@ Test
     )
   )
   .expect_error("invalid price for product p1")
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new(
@@ -353,7 +328,7 @@ Test
     )
   )
   .expect_error("invalid price for product p1")
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Multi: Order product with initial valid price")
@@ -380,7 +355,7 @@ Test
       }
     )
   )
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new(
@@ -418,7 +393,7 @@ Test
       }
     )
   )
-  .run
+  .run(DynamicProductPrice.new)
 
 Test
   .new("Multi: Order product with valid new price")
@@ -469,4 +444,4 @@ Test
       }
     )
   )
-  .run
+  .run(DynamicProductPrice.new)
