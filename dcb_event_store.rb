@@ -1,6 +1,6 @@
 class DcbEventStore
-  def initialize
-    @store = RubyEventStore::Client.new
+  def initialize(store = RubyEventStore::Client.new)
+    @store = store
   end
 
   def execute(projection)
