@@ -15,12 +15,26 @@ class DcbEventStore
     @store.append(events)
     events.each do |event|
       Array(event.class.tags.call(event)).each do |tag|
-        @store.link(event.event_id, stream_name: tag)
+        @store.link(
+          event.event_id,
+          stream_name: tag,
+          expected_version: expected_version(append_condition, tag)
+        )
       end
     end
   end
 
   def read
     @store.read
+  end
+
+  private
+
+  def expected_version(append_condition, stream_name)
+    return :auto unless append_condition
+
+    @store.position_in_stream(append_condition, stream_name)
+  rescue RubyEventStore::EventNotFoundInStream
+    :auto
   end
 end
