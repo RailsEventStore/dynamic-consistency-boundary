@@ -11,8 +11,7 @@ require_relative "api"
 require_relative "test"
 
 def days_ago(days)
-  seconds = 24 * 60 * 60
-  Time.now - (days * seconds)
+  (Date.today - days).to_time
 end
 
 # based on https://dcb.events/examples/unique-username/
