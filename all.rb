@@ -1,0 +1,6 @@
+require_relative "course_subscription"
+require_relative "dynamic_product_price"
+require_relative "invoice_number"
+require_relative "opt-in_token"
+require_relative "prevent_record_duplication"
+require_relative "unique_username"
