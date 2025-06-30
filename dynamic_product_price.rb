@@ -1,12 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 require_relative "api"
 require_relative "test"
 
@@ -144,6 +136,7 @@ class DynamicProductPrice
 end
 
 # test cases:
+event_store = setup_event_store
 
 # Feature 1: Order single product
 
@@ -152,14 +145,14 @@ Test
   .given(ProductDefined.new(data: { product_id: "p1", price: 123 }))
   .when(OrderProduct.new(product_id: "p1", displayed_price: 100))
   .expect_error("invalid price for product p1")
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Order product with valid displayed price")
   .given(ProductDefined.new(data: { product_id: "p1", price: 123 }))
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 123 }))
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 # Feature 2: Changing product prices
 
@@ -178,7 +171,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 100))
   .expect_error("invalid price for product p1")
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Order product with a price that was changed more than 10 minutes ago")
@@ -204,7 +197,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_error("invalid price for product p1")
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Order product with initial valid price")
@@ -221,7 +214,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 123 }))
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Order product with a price that was changed less than 10 minutes ago")
@@ -247,7 +240,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 123))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 123 }))
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Order product with valid new price")
@@ -273,7 +266,7 @@ Test
   )
   .when(OrderProduct.new(product_id: "p1", displayed_price: 134))
   .expect_event(ProductOrdered.new(data: { product_id: "p1", price: 134 }))
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 # Feature 3: Multiple products (shopping cart)
 
@@ -296,7 +289,7 @@ Test
     )
   )
   .expect_error("invalid price for product p1")
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new(
@@ -328,7 +321,7 @@ Test
     )
   )
   .expect_error("invalid price for product p1")
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Multi: Order product with initial valid price")
@@ -355,7 +348,7 @@ Test
       }
     )
   )
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new(
@@ -393,7 +386,7 @@ Test
       }
     )
   )
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))
 
 Test
   .new("Multi: Order product with valid new price")
@@ -444,4 +437,4 @@ Test
       }
     )
   )
-  .run(DynamicProductPrice.new)
+  .run(DynamicProductPrice.new(event_store))

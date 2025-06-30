@@ -1,12 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 require_relative "api"
 require_relative "test"
 
@@ -166,25 +158,26 @@ class CourseSubscription
 end
 
 # test cases:
+event_store = setup_event_store
 
 Test
   .new("Define course with existing id")
   .given(CourseDefined.new(data: { course_id: "c1", capacity: 10 }))
   .when(DefineCourse.new(course_id: "c1", capacity: 15))
   .expect_error("Course with id c1 already exists")
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Define course with new id")
   .when(DefineCourse.new(course_id: "c1", capacity: 15))
   .expect_event(CourseDefined.new(data: { course_id: "c1", capacity: 15 }))
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Change capacity of a non-existing course")
   .when(ChangeCourseCapacity.new(course_id: "c0", new_capacity: 15))
   .expect_error("Course c0 does not exist")
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Change capacity of a course to a new value")
@@ -193,13 +186,13 @@ Test
   .expect_event(
     CourseCapacityChanged.new(data: { course_id: "c1", new_capacity: 15 })
   )
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Subscribe student to non-existing course")
   .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c0"))
   .expect_error("Course c0 does not exist")
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Subscribe student to fully booked course")
@@ -211,7 +204,7 @@ Test
   )
   .when(SubscribeStudentToCourse.new(student_id: "s4", course_id: "c1"))
   .expect_error("Course c1 is already fully booked")
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Subscribe student to the same course twice")
@@ -221,7 +214,7 @@ Test
   )
   .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c1"))
   .expect_error("Student already subscribed to this course")
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Subscribe student to more than 5 courses")
@@ -235,7 +228,7 @@ Test
   )
   .when(SubscribeStudentToCourse.new(student_id: "s1", course_id: "c6"))
   .expect_error("Student already subscribed to 5 courses")
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))
 
 Test
   .new("Subscribe student to course with capacity")
@@ -244,4 +237,4 @@ Test
   .expect_event(
     StudentSubscribedToCourse.new(data: { student_id: "s1", course_id: "c1" })
   )
-  .run(CourseSubscription.new)
+  .run(CourseSubscription.new(event_store))

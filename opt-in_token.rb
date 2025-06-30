@@ -1,12 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 require_relative "api"
 require_relative "test"
 
@@ -86,6 +78,7 @@ class OptInToken
 end
 
 # test cases:
+event_store = setup_event_store
 
 # Feature 1: Simple One-Time Password (OTP)
 
@@ -93,7 +86,7 @@ Test
   .new("Confirm SignUp for non-existing OTP")
   .when(ConfirmSignUp.new(email_address: "john.doe@example.com", otp: "000000"))
   .expect_error("No pending sign-up for this OTP / email address")
-  .run(OptInToken.new)
+  .run(OptInToken.new(event_store))
 
 Test
   .new("Confirm SignUp for OTP assigned to different email address")
@@ -108,7 +101,7 @@ Test
   )
   .when(ConfirmSignUp.new(email_address: "jane.doe@example.com", otp: "111111"))
   .expect_error("No pending sign-up for this OTP / email address")
-  .run(OptInToken.new)
+  .run(OptInToken.new(event_store))
 
 Test
   .new("Confirm SignUp for already used OTP")
@@ -130,7 +123,7 @@ Test
   )
   .when(ConfirmSignUp.new(email_address: "john.doe@example.com", otp: "222222"))
   .expect_error("OTP was already used")
-  .run(OptInToken.new)
+  .run(OptInToken.new(event_store))
 
 Test
   .new("Confirm SignUp for valid OTP")
@@ -153,7 +146,7 @@ Test
       }
     )
   )
-  .run(OptInToken.new)
+  .run(OptInToken.new(event_store))
 
 # Feature 2: Expiring OTP
 
@@ -173,4 +166,4 @@ Test
   )
   .when(ConfirmSignUp.new(email_address: "john.doe@example.com", otp: "333333"))
   .expect_error("OTP expired")
-  .run(OptInToken.new)
+  .run(OptInToken.new(event_store))

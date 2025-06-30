@@ -1,12 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 require_relative "api"
 require_relative "test"
 
@@ -63,6 +55,7 @@ class PreventRecordDuplication
 end
 
 # test cases:
+event_store = setup_event_store
 
 Test
   .new("Place order with previously used idempotency token")
@@ -71,7 +64,7 @@ Test
   )
   .when(PlaceOrder.new(order_id: "o54321", idempotency_token: "11111"))
   .expect_error("Re-submission")
-  .run(PreventRecordDuplication.new)
+  .run(PreventRecordDuplication.new(event_store))
 
 Test
   .new("Place order with new idempotency token")
@@ -82,4 +75,4 @@ Test
   .expect_event(
     OrderPlaced.new(data: { order_id: "o54321", idempotency_token: "22222" })
   )
-  .run(PreventRecordDuplication.new)
+  .run(PreventRecordDuplication.new(event_store))

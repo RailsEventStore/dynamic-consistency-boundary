@@ -1,12 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 require_relative "api"
 require_relative "test"
 
@@ -116,6 +108,7 @@ class UniqueUsername
 end
 
 # test cases:
+event_store = setup_event_store
 
 # Feature 1: Globally unique username
 
@@ -124,13 +117,13 @@ Test
   .given(AccountRegistered.new(data: { username: "u1" }))
   .when(RegisterAccount.new(username: "u1"))
   .expect_error("Username u1 is claimed")
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 Test
   .new("Register account with unused username")
   .when(RegisterAccount.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 # Feature 2: Release usernames
 
@@ -142,7 +135,7 @@ Test
   )
   .when(RegisterAccount.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 # Feature 3: Allow changing of usernames
 
@@ -156,7 +149,7 @@ Test
   )
   .when(RegisterAccount.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 Test
   .new("Register account with a username that another username was changed to")
@@ -166,7 +159,7 @@ Test
   )
   .when(RegisterAccount.new(username: "u1changed"))
   .expect_error("Username u1changed is claimed")
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 # Feature 4: Username retention
 
@@ -192,7 +185,7 @@ Test
   )
   .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_error("Username u1 is claimed")
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 Test
   .new("Register changed username before retention period")
@@ -217,7 +210,7 @@ Test
   )
   .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_error("Username u1 is claimed")
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 Test
   .new("Register username of closed account after retention period")
@@ -241,7 +234,7 @@ Test
   )
   .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))
 
 Test
   .new("Register changed username after retention period")
@@ -266,4 +259,4 @@ Test
   )
   .when(RegisterAccountWithRetentionPeriod.new(username: "u1"))
   .expect_event(AccountRegistered.new(data: { username: "u1" }))
-  .run(UniqueUsername.new)
+  .run(UniqueUsername.new(event_store))

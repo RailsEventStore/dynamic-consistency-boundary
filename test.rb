@@ -26,6 +26,7 @@ class Test
   attr_reader :description, :events, :command, :expected_event, :expected_error
 
   def run(api)
+    api.reset!
     api.store.append(events) unless events&.empty?
     api.call(command)
     if expected_error

@@ -1,7 +1,7 @@
 module Api
   Error = Class.new(StandardError)
 
-  def initialize(event_store: DcbEventStore.new)
+  def initialize(event_store = DcbEventStore.new)
     @store = event_store
   end
   attr_reader :store
@@ -19,12 +19,16 @@ module Api
         state[key] = store.execute(projection).fetch(:result)
         state
       end
-    query =
-      store
-        .read
-        .stream(projections.values.flat_map(&:streams).uniq)
-        .of_type(projections.values.flat_map(&:handled_events).uniq)
+    types = projections.values.flat_map(&:handled_events).uniq
+    query = store.read.of_type(types)
+    streams = projections.values.flat_map(&:streams).uniq
+    query = query.stream(streams) unless streams.empty?
     append_condition = query.last&.event_id
     [model, query, append_condition]
+  end
+
+  def reset!
+    klasses = RubyEventStore::ActiveRecord::WithDefaultModels.new.call
+    klasses.reverse.each(&:delete_all)
   end
 end

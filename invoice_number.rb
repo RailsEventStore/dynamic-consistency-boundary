@@ -1,12 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 require_relative "api"
 require_relative "test"
 
@@ -26,7 +18,7 @@ ImprovedCreateInvoice = Data.define(:invoice_data)
 
 def next_invoice_number_projection
   RubyEventStore::Projection
-    .from_stream(RubyEventStore::GLOBAL_STREAM)
+    .from_all_streams
     .init(-> { { result: 1 } })
     .when(InvoiceCreated, ->(state, _) { state[:result] += 1 })
 end
@@ -73,6 +65,7 @@ class InvoiceNumber
 end
 
 # test cases:
+event_store = setup_event_store
 
 Test
   .new("Create first invoice")
@@ -80,7 +73,7 @@ Test
   .expect_event(
     InvoiceCreated.new(data: { invoice_number: 1, invoice_data: { foo: :bar } })
   )
-  .run(InvoiceNumber.new)
+  .run(InvoiceNumber.new(event_store))
 
 Test
   .new("Create second invoice")
@@ -91,7 +84,7 @@ Test
   .expect_event(
     InvoiceCreated.new(data: { invoice_number: 2, invoice_data: { bar: :baz } })
   )
-  .run(InvoiceNumber.new)
+  .run(InvoiceNumber.new(event_store))
 
 # Better performance
 
@@ -101,7 +94,7 @@ Test
   .expect_event(
     InvoiceCreated.new(data: { invoice_number: 1, invoice_data: { foo: :bar } })
   )
-  .run(InvoiceNumber.new)
+  .run(InvoiceNumber.new(event_store))
 
 Test
   .new("Create second invoice")
@@ -112,4 +105,4 @@ Test
   .expect_event(
     InvoiceCreated.new(data: { invoice_number: 2, invoice_data: { bar: :baz } })
   )
-  .run(InvoiceNumber.new)
+  .run(InvoiceNumber.new(event_store))

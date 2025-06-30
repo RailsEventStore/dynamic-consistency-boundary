@@ -1,13 +1,4 @@
-require "bundler/inline"
-
-gemfile true do
-  source "https://rubygems.org"
-  gem "ruby_event_store", "~> 2.16"
-  gem "aggregate_root", "~> 2.16"
-  gem "ostruct"
-end
-
-require_relative "dcb_event_store"
+require_relative "setup"
 
 # based on https://dcb.events/examples/event-sourced-aggregate/
 
@@ -82,10 +73,6 @@ class CourseAggregate
 
   attr_reader :course_id
 
-  private
-
-  attr_reader :title, :capacity, :number_of_subscriptions
-
   on CourseDefined do |event|
     @course_id = event.data[:course_id]
     @title = event.data[:title]
@@ -99,6 +86,10 @@ class CourseAggregate
   on StudentSubscribedToCourse do |_event|
     @number_of_subscriptions += 1
   end
+
+  private
+
+  attr_reader :title, :capacity, :number_of_subscriptions
 end
 
 # DCB flavored repository
@@ -135,7 +126,7 @@ class DcbCourseRepository
   end
 end
 
-event_store = DcbEventStore.new
+event_store = setup_event_store
 # create and save a new instance:
 repository = DcbCourseRepository.new(event_store)
 course = CourseAggregate.new
