@@ -26,7 +26,7 @@ ImprovedCreateInvoice = Data.define(:invoice_data)
 
 def next_invoice_number_projection
   RubyEventStore::Projection
-    .from_all_streams
+    .from_stream(RubyEventStore::GLOBAL_STREAM)
     .init(-> { { result: 1 } })
     .when(InvoiceCreated, ->(state, _) { state[:result] += 1 })
 end

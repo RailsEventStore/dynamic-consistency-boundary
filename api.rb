@@ -22,8 +22,8 @@ module Api
     query =
       store
         .read
-        .stream(projections.values.map(&:streams).uniq)
-        .of_type(projections.values.map(&:handled_events).uniq)
+        .stream(projections.values.flat_map(&:streams).uniq)
+        .of_type(projections.values.flat_map(&:handled_events).uniq)
     append_condition = query.last&.event_id
     [model, query, append_condition]
   end
